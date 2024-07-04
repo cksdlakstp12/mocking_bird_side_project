@@ -23,7 +23,8 @@ def extract_faces(image_path, output_path):
 
         print(f"Face {i+1} saved at {face_output_path}")
 
-# Example usage
-image_path = 'input.jpg'  # Replace with your image path
-output_path = '.'  # Replace with your output directory
-extract_faces(image_path, output_path)
+if __name__ == "__main__":
+    # Example usage
+    image_path = 'input.jpg'  # Replace with your image path
+    output_path = '.'  # Replace with your output directory
+    extract_faces(image_path, output_path)
