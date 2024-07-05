@@ -59,11 +59,15 @@ class ImageFaceExtractor:
         self.label_display.config(image=img_tk)
         self.label_display.image = img_tk  # Keep a reference to avoid garbage collection
         self.root.title(f"Image {self.current_index + 1}/{len(self.images)} - Faces Detected: {len(self.faces)}")
+        
+        # Check if no faces were detected
+        if len(self.faces) == 0:
+            self.next_image()
 
     def save_face(self, event):
         if self.faces:
             # Save the face image
-            face_output_path = os.path.join(self.save_folder, f"{self.face_index + 1}.jpg")
+            face_output_path = os.path.join(self.save_folder, f"face_{self.face_index + 1}.jpg")
             cv2.imwrite(face_output_path, self.faces[self.face_index])
             self.face_index += 1
             self.show_next_face()
