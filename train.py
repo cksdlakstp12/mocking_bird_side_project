@@ -13,6 +13,7 @@ import logging
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Face Classification using EfficientNet')
+    parser.add_argument('--job-name', type=str, required=True, help='Job name for identifying')
     parser.add_argument('--batch-size', type=int, default=16, help='Batch size for training')
     parser.add_argument('--num-epochs', type=int, default=100, help='Number of epochs for training')
     parser.add_argument('--data-dir', type=str, required=True, help='Path to the root data directory')
@@ -146,8 +147,8 @@ def train_model(model, criterion, optimizer, dataloaders, args, logger, device):
 def main():
     args = parse_arguments()
 
-    timestamp = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-    save_dir = os.path.join("runs", timestamp)
+    timestamp = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S-')
+    save_dir = os.path.join("runs", timestamp + args.job_name)
     os.makedirs(save_dir, exist_ok=True)
     
     best_model_path = os.path.join(save_dir, f'best_model.pth')
