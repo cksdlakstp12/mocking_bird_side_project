@@ -14,12 +14,12 @@ import logging
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Face Classification using EfficientNet')
     parser.add_argument('--batch-size', type=int, default=16, help='Batch size for training')
-    parser.add_argument('--num-epochs', type=int, default=10, help='Number of epochs for training')
+    parser.add_argument('--num-epochs', type=int, default=100, help='Number of epochs for training')
     parser.add_argument('--data-dir', type=str, required=True, help='Path to the root data directory')
     parser.add_argument('--num-classes', type=int, default=2, help='Number of classes in the dataset')
     return parser.parse_args()
 
-def load_data(data_dir, batch_size):
+def load_data(data_dir, batch_size, val_split=0.2):
     data_transforms = {
         'train': transforms.Compose([
             transforms.ColorJitter(0.3, 0.3, 0.3, 0.3),
@@ -40,19 +40,27 @@ def load_data(data_dir, batch_size):
         ]),
     }
 
-    image_datasets = {x: datasets.ImageFolder(root=data_dir, transform=data_transforms[x])
-                      for x in ['train', 'val']}
+    full_dataset = datasets.ImageFolder(root=data_dir, transform=data_transforms['train'])
 
-    dataloaders = {x: DataLoader(image_datasets[x], batch_size=batch_size,
-                                 shuffle=True, num_workers=4)
-                   for x in ['train', 'val']}
+    num_train = int((1 - val_split) * len(full_dataset))
+    num_val = len(full_dataset) - num_train
 
-    return image_datasets, dataloaders
+    train_dataset, val_dataset = torch.utils.data.random_split(full_dataset, [num_train, num_val])
+
+    val_dataset.dataset.transform = data_transforms['val']
+
+    dataloaders = {
+        'train': DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4),
+        'val': DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
+    }
+
+    return dataloaders
+
 
 def setup_model(num_classes):
     model = models.efficientnet_b7(pretrained=True)
-    num_ftrs = model._fc.in_features
-    model._fc = nn.Sequential(
+    num_ftrs = model.classifier[1].in_features
+    model.classifier = nn.Sequential(
         nn.Linear(num_ftrs, 512),
         nn.ReLU(),
         nn.BatchNorm1d(512),
@@ -64,7 +72,7 @@ def setup_model(num_classes):
     )
     return model
     
-def validate_model(model, criterion, dataloader, num_classes, device):
+def validate_model(model, criterion, dataloader, device):
     model.eval()
     running_loss = 0.0
     running_corrects = 0
@@ -75,8 +83,6 @@ def validate_model(model, criterion, dataloader, num_classes, device):
             labels = labels.to(device)
 
             outputs = model(inputs)
-            # if num_classes == 2:
-            #     outputs = outputs.view(-1)
             _, preds = torch.max(outputs, 1)
 
             loss = criterion(outputs, labels)
@@ -91,7 +97,6 @@ def validate_model(model, criterion, dataloader, num_classes, device):
 
 def train_model(model, criterion, optimizer, dataloaders, args, logger, device):
     num_epochs = args.num_epochs
-    num_classes = args.num_classes
     best_acc = 0.0
 
     for epoch in range(num_epochs):
@@ -110,8 +115,6 @@ def train_model(model, criterion, optimizer, dataloaders, args, logger, device):
             optimizer.zero_grad()
 
             outputs = model(inputs)
-            # if num_classes == 2:
-            #     outputs = outputs.view(-1)
             _, preds = torch.max(outputs, 1)
 
             loss = criterion(outputs, labels)
@@ -128,7 +131,7 @@ def train_model(model, criterion, optimizer, dataloaders, args, logger, device):
         logger.info(f'Train Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
 
         # Validation phase
-        val_loss, val_acc = validate_model(model, criterion, dataloaders['val'], num_classes, device)
+        val_loss, val_acc = validate_model(model, criterion, dataloaders['val'], device)
         logger.info(f'Val Loss: {val_loss:.4f} Acc: {val_acc:.4f}')
 
         # Save the best model based on validation accuracy
@@ -155,25 +158,14 @@ def main():
                         format='%(asctime)s - %(levelname)s - %(message)s')
     logger = logging.getLogger()
 
-    # 데이터 로딩
-    image_datasets, dataloaders = load_data(args.data_dir, args.batch_size)
+    dataloaders = load_data(args.data_dir, args.batch_size)
 
-    # 모델 설정
-    model = setup_model(args.num_classes)
-
-    # 손실 함수 설정
-    # if args.num_classes == 2:
-    #     criterion = nn.BCEWithLogitsLoss()
-    # else:
-    criterion = nn.CrossEntropyLoss()
-
-    # 옵티마이저 설정
-    optimizer = Adam(model.parameters(), lr=0.001)
-
-    # GPU 사용 여부 확인 및 학습
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    model = setup_model(args.num_classes)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = Adam(model.parameters(), lr=0.001)
+    model = model.to(device)
 
-    # 학습 시작
     train_model(model, criterion, optimizer, dataloaders, args, logger, device)
 
 if __name__ == '__main__':
